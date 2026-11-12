@@ -282,6 +282,113 @@ function gp_head_meta() {
 add_action( 'wp_head', 'gp_head_meta', 5 );
 
 /**
+ * Profile URLs that identify the site owner (LinkedIn, Behance, …) for the
+ * Person node's sameAs. Defaults to LinkedIn; add or replace via a child
+ * theme / mu-plugin:
+ *
+ *   add_filter( 'gp_same_as', fn() => array( 'https://www.linkedin.com/in/…' ) );
+ *
+ * @return string[]
+ */
+function gp_same_as() {
+	$urls = apply_filters( 'gp_same_as', array( 'https://www.linkedin.com/in/goncalo-goncalves-design/' ) );
+	return array_values( array_filter( array_map( 'esc_url_raw', (array) $urls ) ) );
+}
+
+/**
+ * Rank Math prints its own schema graph. Keep it consistent with the page:
+ * the front page's WebPage name matches the visible H1, and the author/owner
+ * Person nodes get the sameAs profiles.
+ */
+function gp_rank_math_json_ld( $data ) {
+	if ( ! is_array( $data ) ) {
+		return $data;
+	}
+	$same_as = gp_same_as();
+	$h1      = is_front_page() ? wp_strip_all_tags( get_the_title( get_queried_object_id() ) ) : '';
+
+	foreach ( $data as $key => $node ) {
+		if ( ! is_array( $node ) || empty( $node['@type'] ) ) {
+			continue;
+		}
+		$types = (array) $node['@type'];
+		if ( $h1 && in_array( 'WebPage', $types, true ) ) {
+			$data[ $key ]['name'] = $h1;
+		}
+		if ( $same_as && in_array( 'Person', $types, true ) ) {
+			$data[ $key ]['sameAs'] = $same_as;
+		}
+	}
+	return $data;
+}
+add_filter( 'rank_math/json_ld', 'gp_rank_math_json_ld', 99 );
+
+/**
+ * Show real publish/modified dates in <time> elements (matching the
+ * datePublished/dateModified in the structured data) on singular views.
+ */
+function gp_render_dates() {
+	if ( ! is_singular() ) {
+		return;
+	}
+	$id = get_queried_object_id();
+	printf(
+		'<p class="pf-dates">%1$s <time datetime="%2$s">%3$s</time> · %4$s <time datetime="%5$s">%6$s</time></p>',
+		esc_html__( 'Published', 'goncalo-portfolio' ),
+		esc_attr( get_the_date( 'c', $id ) ),
+		esc_html( get_the_date( '', $id ) ),
+		esc_html__( 'Updated', 'goncalo-portfolio' ),
+		esc_attr( get_the_modified_date( 'c', $id ) ),
+		esc_html( get_the_modified_date( '', $id ) )
+	);
+}
+add_action( 'wp_footer', 'gp_render_dates' );
+
+/**
+ * Core's image lightbox ships its buttons with labels that are bound at
+ * runtime (data-wp-bind--aria-label), so the server HTML has unnamed buttons
+ * and width-less placeholder <img>s. Add static fallbacks; the runtime
+ * binding still overrides them once the page hydrates.
+ */
+function gp_lightbox_a11y( $content ) {
+	if ( false === strpos( $content, 'lightbox' ) ) {
+		return $content;
+	}
+	$labels = array(
+		'wp-lightbox-close-button'                       => __( 'Close', 'goncalo-portfolio' ),
+		'wp-lightbox-navigation-button-prev'             => __( 'Previous image', 'goncalo-portfolio' ),
+		'wp-lightbox-navigation-button-next'             => __( 'Next image', 'goncalo-portfolio' ),
+		'lightbox-trigger'                               => __( 'Enlarge image', 'goncalo-portfolio' ),
+	);
+	foreach ( $labels as $class => $label ) {
+		$content = preg_replace_callback(
+			'/<button\b([^>]*\bclass="[^"]*\b' . preg_quote( $class, '/' ) . '\b[^"]*"[^>]*)>/s',
+			static function ( $m ) use ( $label ) {
+				if ( preg_match( '/(?<![-\w])aria-label=/', $m[1] ) ) {
+					return $m[0];
+				}
+				return '<button' . $m[1] . ' aria-label="' . esc_attr( $label ) . '">';
+			},
+			$content
+		);
+	}
+	// Runtime-filled overlay images: reserve a size (inline styles override it).
+	$content = preg_replace_callback(
+		'/<img\b([^>]*\bdata-wp-bind--src=[^>]*)>/s',
+		static function ( $m ) {
+			if ( preg_match( '/\swidth=/', $m[1] ) ) {
+				return $m[0];
+			}
+			return '<img width="1" height="1"' . $m[1] . '>';
+		},
+		$content
+	);
+	return $content;
+}
+add_filter( 'render_block_core/image', 'gp_lightbox_a11y', 20 );
+add_filter( 'render_block_core/gallery', 'gp_lightbox_a11y', 20 );
+
+/**
  * JSON-LD: a Person for the portfolio owner plus the WebSite itself, so search
  * engines and AI agents can identify whose work this is.
  */
@@ -296,6 +403,10 @@ function gp_json_ld() {
 		'url'   => home_url( '/' ),
 		'jobTitle' => 'UX/UI & Graphic Designer',
 	);
+	$same_as = gp_same_as();
+	if ( $same_as ) {
+		$person['sameAs'] = $same_as;
+	}
 
 	$graph = array(
 		array(
@@ -363,6 +474,15 @@ function gp_robots_txt( $output, $public ) {
 	$extra .= "\n# AI crawlers — allowed. Change Allow to Disallow to opt out.\n";
 
 	foreach ( array( 'GPTBot', 'ClaudeBot', 'anthropic-ai', 'PerplexityBot', 'Google-Extended', 'CCBot', 'Applebot-Extended' ) as $bot ) {
+		$extra .= "User-agent: {$bot}\nAllow: /\n\n";
+	}
+
+	// Search and on-demand agents (what puts the site in AI answers with a
+	// citation). Named explicitly so the policy is stated, not left to defaults;
+	// this matches the existing posture (everything allowed). Whether to block
+	// the *training* crawlers above is the site owner's call — see README.
+	$extra .= "# AI search & user-triggered agents — allowed (citations, on-demand fetches).\n";
+	foreach ( array( 'OAI-SearchBot', 'ChatGPT-User', 'Claude-SearchBot', 'Claude-User', 'Perplexity-User', 'DuckAssistBot' ) as $bot ) {
 		$extra .= "User-agent: {$bot}\nAllow: /\n\n";
 	}
 

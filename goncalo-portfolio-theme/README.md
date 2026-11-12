@@ -127,6 +127,7 @@ part, so the controls can never be deleted by accident in the Site Editor.
 | ? `prefers-reduced-motion` | All transitions/animations reduced under that media query. |
 | ? Security headers | Theme sends `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, `X-Frame-Options: SAMEORIGIN`. |
 | ? robots.txt for AI | Explicit `Allow` rules for GPTBot, ClaudeBot, anthropic-ai, PerplexityBot, Google-Extended, CCBot, Applebot-Extended (flip to `Disallow` to opt out). |
+| ? Agent readiness | Search/on-demand agents (OAI-SearchBot, Claude-SearchBot, ChatGPT-User, Claude-User, Perplexity-User, DuckAssistBot) named in robots.txt; visible `<time>` dates; static labels for core lightbox buttons; Rank Math WebPage name kept equal to the H1. Add owner profile URLs with `add_filter( 'gp_same_as', … )` for `sameAs`. Training-crawler policy is left to you (the Allow rules above permit training). |
 | ? `/llms.txt` | Served at `/llms.txt` — a plain-text index of every published page with summaries, for AI agents. |
 | ? Privacy policy link | A quiet 10px link, bottom-left, shown **only** when a privacy page is set (Settings → Privacy). |
 | ⚠ `lang` attribute | Handled by core once the site language is set — confirmed rendering `<html lang="pt-PT">`. |

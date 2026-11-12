@@ -116,6 +116,17 @@ summary:focus-visible,
 	color: var(--gp-muted);
 	text-decoration: none;
 }
+.pf-dates {
+	position: fixed;
+	bottom: 22px;
+	left: 8px;
+	z-index: 200;
+	margin: 0;
+	font-size: 10px;
+	font-weight: 300;
+	line-height: 1;
+	color: var(--gp-muted);
+}
 .pf-privacy:hover,
 .pf-privacy:focus-visible {
 	color: var(--gp-ink);
